@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Course Hub</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{--bg:#f6f5f2;--card:#fff;--ink:#23262b;--mut:#6b7078;--line:#e1ded8;--acc:#2f5d62;--accbg:#e4eeed;--warn:#a55a12;--warnbg:#fbeedd;--bad:#a23b3b;--badbg:#f8e4e4;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#17191c;--card:#1f2226;--ink:#e8e6e1;--mut:#9a9ea5;--line:#33373c;--acc:#7fb5ba;--accbg:#243436;--warn:#e3a45f;--warnbg:#3a2d1c;--bad:#e08a8a;--badbg:#3b2424;color-scheme:dark}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--card)}
+h1{font-size:18px;margin:0}nav{display:flex;gap:4px;flex-wrap:wrap}
+nav button,.btn{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:6px 12px;border-radius:8px;cursor:pointer}
+nav button.on,.btn.pri{background:var(--acc);color:var(--bg);border-color:var(--acc)}.btn.bad{color:var(--bad)}
+main{max-width:980px;margin:0 auto;padding:20px}.note{background:var(--accbg);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px}.note.w{background:var(--warnbg);color:var(--warn)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 10px;max-width:100%}textarea{width:100%;min-height:60px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:6px}
+.sn{font:600 13px ui-monospace,Menlo,monospace;background:var(--accbg);color:var(--acc);padding:2px 8px;border-radius:6px;align-self:flex-start}
+.mut{color:var(--mut);font-size:13px}.tag{font-size:12px;padding:1px 8px;border-radius:99px;background:var(--accbg);color:var(--acc)}.tag.p{background:var(--warnbg);color:var(--warn)}.tag.r{background:var(--badbg);color:var(--bad)}
+.pv{width:100%;border:1px solid var(--line);border-radius:8px;margin-top:8px}iframe.pv{height:380px}img.pv{max-height:380px;object-fit:contain}iframe.yt{width:100%;aspect-ratio:16/9;border:0;border-radius:8px}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:16px;z-index:5}
+.modal>div{background:var(--card);border-radius:14px;padding:18px;max-width:640px;width:100%;max-height:90vh;overflow:auto}
+table{width:100%;border-collapse:collapse}td{border-bottom:1px solid var(--line);padding:8px;vertical-align:top;font-size:14px}
+label{display:block;font-size:13px;color:var(--mut);margin:8px 0 2px}.f2{display:grid;grid-template-columns:1fr 1fr;gap:8px}@media(max-width:560px){.f2{grid-template-columns:1fr}}
+</style></head><body>
+<header><h1 id="ttl">Course Hub</h1><nav id="nav"></nav><div id="who" class="mut"></div></header>
+<main id="m"></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+/* 1) PASTE your two values from Supabase > Project Settings > API (the anon key is safe to publish) */
+const CFG={url:"https://scpsobgjzkqyowfnfbkg.supabase.co",key:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNjcHNvYmdqemtxeW93Zm5mYmtnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMxMjc2MDcsImV4cCI6MjEwODcwMzYwN30.FvPrCWyX4gIM_djWxbDfcfErGzxaWWfjYGeAISZYZMc"};
+const sb=supabase.createClient(CFG.url,CFG.key);
+const $=s=>document.querySelector(s);
+const e=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const SEM=["S1","S2","S3","S4","S5","S6"],DAYS=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],NOT=["Cancelled","Room changed","Time changed","Special note"];
+const D={title:"Course Hub",tab_lib:"Library",tab_sub:"Submit",tab_tt:"Timetable",tab_adm:"Admin",signin_note:"Sign in with your full name. This is a simple community sign-in, not secure identity verification.",submit_note:"New submissions stay Pending until an admin approves them.",lib_empty:"No approved materials match yet.",tt_note:"Manually maintained by the admin",tt_empty:"No timetable has been added yet.",mine_h:"My submissions",mine_empty:"Nothing yet.",search_ph:"Search title, serial (e.g. 007), subject…"};
+const S={tab:location.hash==="#admin"?"adm":"lib",ses:null,admin:false,items:[],tt:[],T:{},f:{q:"",type:"",sem:"",subj:"",unit:"",kind:""},draft:null,err:""};
+const T=k=>S.T[k]||D[k],sn=x=>String(x.serial).padStart(3,"0"),fmt=t=>t?new Date(t).toLocaleString([],{dateStyle:"medium",timeStyle:"short"}):"";
+const ytId=u=>{const m=String(u).match(/(?:youtu\.be\/|v=|embed\/|shorts\/)([\w-]{11})/);return m&&m[1]};
+const OK=/^(application\/pdf|image\/(jpeg|png|webp|gif|heic)|text\/plain|application\/zip|application\/msword|application\/vnd\.openxmlformats-officedocument\..+)$/;
+const TY={pdf:"PDF",image:"Image",file:"File",youtube:"YouTube"};
+const anon=()=>S.ses?.user?.is_anonymous,name=()=>anon()?S.ses.user.user_metadata?.name||"":"";
+async function load(){
+ const [a,b,c]=await Promise.all([sb.from("materials").select("*").order("serial",{nullsFirst:false}),sb.from("timetable").select("*"),sb.from("site_text").select("*")]);
+ S.items=a.data||[];S.tt=b.data||[];S.T=Object.fromEntries((c.data||[]).map(r=>[r.key,r.value]));
+ S.loadErr=a.error?.message;soft();
+}
+async function init(){
+ const {data}=await sb.auth.getSession();S.ses=data.session;await checkAdmin();
+ sb.auth.onAuthStateChange(async(_,s)=>{S.ses=s;await checkAdmin();load()});
+ await load();
+}
+async function checkAdmin(){S.admin=false;if(S.ses&&!anon()){const r=await sb.rpc("is_admin");S.admin=r.data===true}}
+function soft(){if(S.tab!=="lib"&&/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName||""))return;render()}
+function render(){
+ $("#ttl").textContent=T("title");document.title=T("title");
+ $("#who").innerHTML=S.ses?`${e(S.admin?"Admin":name())} · <a href="#" id="so">Sign out</a>`:"";
+ const tabs=[["lib",T("tab_lib")],["sub",T("tab_sub")],["tt",T("tab_tt")]];if(S.admin||S.tab==="adm")tabs.push(["adm",T("tab_adm")]);
+ $("#nav").innerHTML=tabs.map(([k,l])=>`<button class="${S.tab===k?"on":""}" data-t="${k}">${e(l)}</button>`).join("");
+ $("#nav").onclick=ev=>{const t=ev.target.dataset.t;if(t){S.tab=t;S.err="";render()}};
+ if($("#so"))$("#so").onclick=async ev=>{ev.preventDefault();await sb.auth.signOut()};
+ const kf=document.activeElement?.id;
+ $("#m").innerHTML=(S.loadErr?`<div class="note w">Could not load data: ${e(S.loadErr)}. Check your Supabase URL and key.</div>`:"")+({lib:vLib,sub:vSub,tt:vTT,adm:vAdm}[S.tab])();
+ bind();if(kf&&$("#"+kf)){const el=$("#"+kf);el.focus();try{el.setSelectionRange(el.value.length,el.value.length)}catch(_){}}
+}
+const appr=()=>S.items.filter(x=>x.status==="approved");
+function vLib(){
+ const f=S.f,A=appr(),u=k=>[...new Set(A.map(x=>x[k]).filter(Boolean))].sort(),q=f.q.trim().toLowerCase();
+ const L=A.filter(x=>(!f.type||x.type===f.type)&&(!f.sem||x.semester===f.sem)&&(!f.subj||x.subject===f.subj)&&(!f.unit||x.unit===f.unit)&&(!f.kind||(x.kind+" "+x.num)===f.kind)&&
+  (!q||[x.title,x.description,x.subject,x.unit,x.num,sn(x),x.submitter_name].join(" ").toLowerCase().includes(q)));
+ const sel=(id,k,lab,vals,lbl=v=>v)=>`<select id="${id}" data-f="${k}"><option value="">${lab}</option>${vals.map(v=>`<option value="${e(v)}" ${f[k]===v?"selected":""}>${e(lbl(v))}</option>`).join("")}</select>`;
+ return `<div class="row"><input id="q" data-f="q" placeholder="${e(T("search_ph"))}" value="${e(f.q)}" style="flex:1;min-width:200px">${sel("ft","type","All types",["pdf","image","file","youtube"],v=>TY[v])}${sel("fs","sem","Semester",u("semester"))}${sel("fj","subj","Subject",u("subject"))}${sel("fu","unit","Unit",u("unit"))}${sel("fk","kind","Course / TD",[...new Set(A.map(x=>x.kind+" "+x.num))].sort())}</div>`+
+ (L.length?`<div class="grid">${L.map(x=>`<div class="card"><span class="sn">#${sn(x)}</span><strong>${e(x.title)}</strong><span class="mut">${e(x.semester)} › ${e(x.subject)} › ${e(x.unit)} › ${e(x.kind)} ${e(x.num)}</span><span><span class="tag">${TY[x.type]}</span></span><span class="mut">By ${e(x.submitter_name)} · ${fmt(x.created_at)}</span><button class="btn" data-open="${x.id}">Open</button></div>`).join("")}</div>`:`<p class="mut">${e(T("lib_empty"))}</p>`);
+}
+function modal(x,extra){const m=document.createElement("div");m.className="modal";
+ m.innerHTML=`<div>${x.serial!=null?`<span class="sn">#${sn(x)}</span>`:""}<h3>${e(x.title)}</h3>${x.semester?`<p class="mut">${e(x.semester)} › ${e(x.subject)} › ${e(x.unit)} › ${e(x.kind)} ${e(x.num)} · By ${e(x.submitter_name)} · ${fmt(x.created_at)}</p><p>${e(x.description)}</p><div id="med"></div>`:""}${extra||""}<p><button class="btn" id="cl">Close</button></p></div>`;
+ document.body.appendChild(m);m.onclick=ev=>{if(ev.target===m||ev.target.id==="cl")m.remove()};if(x.semester)media(x,m.querySelector("#med"));return m}
+async function media(x,box){
+ if(x.type==="youtube"){box.innerHTML=`<iframe class="yt" src="https://www.youtube.com/embed/${e(x.youtube_id)}" allowfullscreen title="${e(x.title)}"></iframe><p><a href="https://www.youtube.com/watch?v=${e(x.youtube_id)}" target="_blank" rel="noopener">Open on YouTube</a></p>`;return}
+ const {data,error}=await sb.storage.from("materials").createSignedUrl(x.file_path,3600);
+ if(error){box.textContent="Could not load the file: "+error.message;return}
+ const u=e(data.signedUrl);box.innerHTML=x.type==="image"?`<img class="pv" src="${u}" alt="${e(x.title)}">`:x.type==="pdf"?`<iframe class="pv" src="${u}" title="${e(x.title)}"></iframe>`:`<a href="${u}" target="_blank" rel="noopener">Download file</a>`;
+}
+function vSub(){
+ if(!S.ses)return `<div class="note">${e(T("signin_note"))}</div><div class="row"><input id="nm" placeholder="Full name"><button class="btn pri" id="go">Sign in</button></div>${S.err?`<p style="color:var(--bad)">${e(S.err)}</p>`:""}`;
+ const d=S.draft,mine=S.items.filter(x=>x.submitted_by===S.ses.user.id).sort((a,b)=>b.created_at.localeCompare(a.created_at));
+ const opts=(a,v)=>a.map(o=>`<option ${v===o?"selected":""}>${o}</option>`).join("");
+ const form=d&&d.review?`<div class="card"><strong>Review</strong><span>${e(d.title)}</span><span class="mut">${e(d.sem)} › ${e(d.subj)} › ${e(d.unit)} › ${e(d.kind)} ${e(d.num)}</span><span class="mut">${d.file?e(d.file.name):e(d.link)}</span><div class="row"><button class="btn" id="back">Back</button><button class="btn pri" id="send">Submit for review</button></div></div>`:
+ `<div class="note">${e(T("submit_note"))}</div><label>Title</label><input id="t" style="width:100%" value="${e(d?.title||"")}"><label>Description (optional)</label><textarea id="ds">${e(d?.desc||"")}</textarea>
+ <div class="f2"><div><label>Semester</label><select id="sm">${opts(SEM,d?.sem)}</select></div><div><label>Subject</label><input id="sj" value="${e(d?.subj||"")}"></div><div><label>Unit</label><input id="un" value="${e(d?.unit||"")}"></div><div><label>Course or TD</label><select id="kd">${opts(["Course","TD"],d?.kind)}</select></div><div><label>Number</label><input id="nu" value="${e(d?.num||"")}"></div></div>
+ <label>File, photo or PDF (max 20 MB)</label><input type="file" id="fl" accept="image/*,.pdf,.doc,.docx,.pptx,.xlsx,.txt,.zip"><label>…or YouTube link</label><input id="lk" style="width:100%" value="${e(d?.link||"")}" placeholder="https://youtu.be/…">${S.err?`<p style="color:var(--bad)">${e(S.err)}</p>`:""}<p><button class="btn pri" id="rv">Review</button></p>`;
+ return form+`<h3>${e(T("mine_h"))}</h3>`+(mine.length?`<table>${mine.map(x=>`<tr><td>${e(x.title)}</td><td><span class="tag ${x.status[0]==="a"?"":x.status[0]}">${x.status}</span>${x.reject_reason?`<div class="mut">${e(x.reject_reason)}</div>`:""}</td><td class="mut">${x.serial!=null?"#"+sn(x):""}</td></tr>`).join("")}</table>`:`<p class="mut">${e(T("mine_empty"))}</p>`);
+}
+function vTT(){
+ const by=d=>S.tt.filter(r=>r.day===d).sort((a,b)=>a.start_time.localeCompare(b.start_time)),last=S.tt.map(r=>r.updated_at).sort().pop();
+ return `<div class="note">${e(T("tt_note"))}${last?" · last updated "+fmt(last):""}.</div>`+(S.tt.length?DAYS.filter(d=>by(d).length).map(d=>`<h3>${d}</h3><table>${by(d).map(r=>`<tr><td>${e(r.start_time)}–${e(r.end_time)}</td><td><strong>${e(r.subject)}</strong><div class="mut">Room ${e(r.room)}</div></td><td>${r.notice?`<span class="tag p">${e(r.notice)}</span><div class="mut">${e(r.note)} · updated ${fmt(r.updated_at)}</div>`:""}</td></tr>`).join("")}</table>`).join(""):`<p class="mut">${e(T("tt_empty"))}</p>`);
+}
+const ef=x=>`<div class="f2"><input id="f_title" value="${e(x.title)}"><input id="f_semester" value="${e(x.semester)}"><input id="f_subject" value="${e(x.subject)}"><input id="f_unit" value="${e(x.unit)}"><input id="f_kind" value="${e(x.kind)}"><input id="f_num" value="${e(x.num)}"></div><textarea id="f_description">${e(x.description)}</textarea>`;
+const rf=m=>Object.fromEntries(["title","semester","subject","unit","kind","num","description"].map(k=>[k,m.querySelector("#f_"+k).value.trim()]));
+function vAdm(){
+ if(!S.ses||anon())return `<div class="note">Admin sign-in</div><div class="row"><input id="ae" type="email" placeholder="Email" autocomplete="username"><input id="ap" type="password" placeholder="Password" autocomplete="current-password"><button class="btn pri" id="al">Sign in</button></div>${S.err?`<p style="color:var(--bad)">${e(S.err)}</p>`:""}`;
+ if(!S.admin)return `<div class="note w">This account is not an admin.</div>`;
+ const P=S.items.filter(x=>x.status==="pending"),A=appr(),R=S.items.filter(x=>x.status==="rejected");
+ return `<h3>Pending (${P.length})</h3>${P.length?`<table>${P.map(x=>`<tr><td><strong>${e(x.title)}</strong><div class="mut">${e(x.submitter_name)} · ${e(x.semester)} › ${e(x.subject)} › ${e(x.unit)}</div></td><td><button class="btn" data-rev="${x.id}">Review</button></td></tr>`).join("")}</table>`:`<p class="mut">Nothing to review.</p>`}
+ <h3>Approved (${A.length}) · Rejected (${R.length})</h3><table>${A.map(x=>`<tr><td>#${sn(x)}</td><td>${e(x.title)}</td><td><button class="btn" data-eapp="${x.id}">Edit</button></td></tr>`).join("")}${R.map(x=>`<tr><td><span class="tag r">rejected</span></td><td>${e(x.title)}<div class="mut">${e(x.reject_reason)}</div></td><td></td></tr>`).join("")}</table>
+ <h3>Timetable</h3><table>${S.tt.map(r=>`<tr><td>${e(r.day)} ${e(r.start_time)}–${e(r.end_time)}</td><td>${e(r.subject)} · ${e(r.room)} ${r.notice?`<span class="tag p">${e(r.notice)}</span>`:""}</td><td><button class="btn" data-ted="${r.id}">Edit</button> <button class="btn bad" data-del="${r.id}">Remove</button></td></tr>`).join("")}</table>
+ <div class="f2"><select id="td">${DAYS.map(d=>`<option>${d}</option>`).join("")}</select><input id="ts" placeholder="Subject"><input id="tb" type="time"><input id="te" type="time"><input id="tr" placeholder="Room"><select id="tst"><option value="">No notice</option>${NOT.map(n=>`<option>${n}</option>`).join("")}</select></div><input id="tn" placeholder="Note (optional)" style="width:100%;margin-top:8px"><p><button class="btn pri" id="ta">Add entry</button></p>
+ <h3>Site text</h3>${Object.keys(D).map(k=>`<label>${k}</label><input id="tx_${k}" style="width:100%" value="${e(T(k))}">`).join("")}<p><button class="btn pri" id="tsv">Save text</button> <button class="btn" id="trs">Reset to defaults</button></p>`;
+}
+const fail=r=>{if(r?.error){alert(r.error.message);return true}};
+function bind(){
+ document.querySelectorAll("[data-f]").forEach(el=>el.oninput=()=>{S.f[el.dataset.f]=el.value;render()});
+ const on=(id,fn)=>{const el=$("#"+id);if(el)el.onclick=fn},byId=i=>S.items.find(x=>x.id===i);
+ document.querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>modal(byId(b.dataset.open)));
+ on("go",async()=>{const n=$("#nm").value.trim();if(n.length<3){S.err="Please enter your full name.";return render()}
+  const r=await sb.auth.signInAnonymously({options:{data:{name:n}}});if(r.error){S.err=r.error.message;render()}});
+ on("al",async()=>{const r=await sb.auth.signInWithPassword({email:$("#ae").value.trim(),password:$("#ap").value});if(r.error){S.err="Wrong email or password.";render()}else S.err=""});
+ on("rv",()=>{const g=i=>$("#"+i)?.value.trim()||"",d={title:g("t"),desc:g("ds"),sem:g("sm"),subj:g("sj"),unit:g("un"),kind:g("kd"),num:g("nu"),link:g("lk"),file:$("#fl")?.files[0]||S.draft?.file};S.draft=d;
+  if(!d.title||!d.subj||!d.unit||!d.num){S.err="Please fill title, subject, unit and number.";return render()}
+  if(!d.file&&!ytId(d.link)){S.err="Add a file or a valid YouTube link.";return render()}
+  if(d.file&&(!OK.test(d.file.type)||d.file.size>20*1048576)){S.err="File type not allowed, or larger than 20 MB.";return render()}
+  S.err="";d.review=true;render()});
+ on("back",()=>{S.draft.review=false;render()});
+ on("send",async()=>{const d=S.draft,b=$("#send");b.disabled=true;b.textContent="Sending…";
+  try{const rec={title:d.title,description:d.desc,semester:d.sem,subject:d.subj,unit:d.unit,kind:d.kind,num:d.num,submitter_name:name()||"Student"};
+   if(d.file){const p=S.ses.user.id+"/"+crypto.randomUUID()+"-"+d.file.name.replace(/[^\w.-]/g,"_"),u=await sb.storage.from("materials").upload(p,d.file,{contentType:d.file.type});if(u.error)throw u.error;
+    rec.file_path=p;rec.type=d.file.type==="application/pdf"?"pdf":d.file.type.startsWith("image/")?"image":"file"}else{rec.type="youtube";rec.youtube_id=ytId(d.link)}
+   const r=await sb.from("materials").insert(rec);if(r.error)throw r.error;S.draft=null;S.err="";await load()}
+  catch(x){S.err="Upload failed: "+(x.message||"unknown error")+". Try again.";S.draft.review=false}render()});
+ document.querySelectorAll("[data-rev]").forEach(b=>b.onclick=()=>{const x=byId(b.dataset.rev);
+  const m=modal(x,ef(x)+`<input id="rr" placeholder="Reason if rejecting (optional)" style="width:100%;margin-top:8px"><p><button class="btn pri" id="ap2">Approve</button> <button class="btn bad" id="rj">Reject</button></p>`);
+  m.querySelector("#ap2").onclick=async()=>{if(fail(await sb.from("materials").update(rf(m)).eq("id",x.id)))return;if(fail(await sb.rpc("approve_material",{mid:x.id})))return;m.remove();load()};
+  m.querySelector("#rj").onclick=async()=>{if(fail(await sb.from("materials").update({status:"rejected",reject_reason:m.querySelector("#rr").value.trim()}).eq("id",x.id)))return;m.remove();load()}});
+ document.querySelectorAll("[data-eapp]").forEach(b=>b.onclick=()=>{const x=byId(b.dataset.eapp),m=modal(x,ef(x)+`<p><button class="btn pri" id="sv">Save changes</button></p>`);
+  m.querySelector("#sv").onclick=async()=>{if(fail(await sb.from("materials").update(rf(m)).eq("id",x.id)))return;m.remove();load()}});
+ on("ta",async()=>{const g=i=>$("#"+i).value.trim();if(!g("ts")||!g("tb")||!g("te"))return;
+  if(!fail(await sb.from("timetable").insert({day:g("td"),subject:g("ts"),start_time:g("tb"),end_time:g("te"),room:g("tr"),notice:g("tst"),note:g("tn")})))load()});
+ document.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{if(!fail(await sb.from("timetable").delete().eq("id",b.dataset.del)))load()});
+ document.querySelectorAll("[data-ted]").forEach(b=>b.onclick=()=>{const r=S.tt.find(x=>x.id===b.dataset.ted),ks=[["day","Day"],["subject","Subject"],["start_time","Start"],["end_time","End"],["room","Room"],["notice","Notice"],["note","Note"]];
+  const m=modal({title:"Edit timetable entry"},`<div class="f2">${ks.map(([k,l])=>`<div><label>${l}</label><input id="r_${k}" value="${e(r[k])}"></div>`).join("")}</div><p><button class="btn pri" id="rsv">Save</button></p>`);
+  m.querySelector("#rsv").onclick=async()=>{const v=Object.fromEntries(ks.map(([k])=>[k,m.querySelector("#r_"+k).value.trim()]));v.updated_at=new Date().toISOString();if(!fail(await sb.from("timetable").update(v).eq("id",r.id))){m.remove();load()}}});
+ on("tsv",async()=>{const rows=Object.keys(D).map(k=>({key:k,value:$("#tx_"+k).value.trim()})).filter(r=>r.value&&r.value!==D[r.key]);
+  await sb.from("site_text").delete().neq("key","");if(rows.length&&fail(await sb.from("site_text").insert(rows)))return;load()});
+ on("trs",async()=>{if(!fail(await sb.from("site_text").delete().neq("key","")))load()});
+}
+if(CFG.url.startsWith("PASTE"))document.getElementById("m").innerHTML='<div class="note w">Open index.html in a text editor and paste your Supabase URL and anon key near the top of the script.</div>';else init();
+</script></body></html>
